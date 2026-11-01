@@ -51,7 +51,10 @@ function recommend(all){
   else{R=Math.min(12,Math.max(10,top.r+1));if(top.r<8)W-=5;why=`Medium day: 10–12 reps at RIR 2. Last top set ${top.w}x${top.r} → aim ${R}.`}
   return{type,why,sets:[{w:W-15,r:12,rir:3},{w:W-5,r:10,rir:2},{w:W,r:R,rir:2},{w:W-5,r:10,rir:2},{w:W-15,r:12,rir:1}]};
 }
-if(typeof module!=='undefined')module.exports={SEED,recommend,epley,best};
+// Preview upcoming day types by simulating sessions done as prescribed
+function upcoming(all,k=4){let S=[...all].filter(s=>s.sets.length);const out=[];let d=S.length?sortS(S).slice(-1)[0].date:'2000-01-01';
+  for(let i=0;i<k;i++){const r=recommend(S);out.push(r.type);d=d+'~';S=S.concat([{id:'sim'+i,date:d,type:r.type,sets:r.sets.map(x=>({w:x.w,r:x.r}))}])}return out}
+if(typeof module!=='undefined')module.exports={SEED,recommend,upcoming,epley,best};
 // ---------- UI ----------
 if(typeof document!=='undefined'){
 const K='benchSessions';let db;try{db=JSON.parse(localStorage.getItem(K))}catch(e){}if(!db){db=SEED;save()}
@@ -60,7 +63,7 @@ const $=s=>document.querySelector(s),app=$('#app');const TN={H:'Heavy',M:'Medium
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let draft=null;
 const V={
- next(){const r=recommend(db);app.innerHTML=`<div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
+ next(){const r=recommend(db);const up=upcoming(db,4);app.innerHTML=`<div class="card"><div class="muted">Coming up</div><div style="font-size:18px"><b>Next: ${TN[up[0]]}</b> → then ${up.slice(1).map(t=>TN[t]).join(' → ')}</div>${r.type==='D'?'<div class="muted">Deload because your last 2 sessions were >5% below your best.</div>':''}<div class="muted" style="font-size:12px">Preview assumes you hit today's targets; it updates after each log.</div></div><div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
  <table>${r.sets.map((s,i)=>`<tr><td>Set ${i+1}</td><td class="big" style="font-size:20px">${s.w} × ${s.r}</td><td class="muted">RIR ${s.rir}</td></tr>`).join('')}</table>
  <button class="b" id="use">Log this session</button></div><div class="card muted">Weights are per dumbbell (lb). RIR = reps in reserve. If a set feels much harder than target RIR, stop there.</div>`;
  $('#use').onclick=()=>{draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(s=>({w:s.w,r:s.r}))};go('log')}},
