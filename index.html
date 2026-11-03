@@ -197,6 +197,6 @@ const V={
 let CUR='next';function go(v){CUR=v;document.querySelectorAll('[data-ex]').forEach(b=>b.classList.toggle('on',b.dataset.ex===EX));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));V[v]();scrollTo(0,0)}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));go('next');
 document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>{EX=b.dataset.ex;localStorage.setItem('exercise',EX);load();draft=null;go(CUR)});
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+if('serviceWorker' in navigator){let _rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(_rl)return;_rl=true;location.reload()});navigator.serviceWorker.register('sw.js').then(reg=>{reg.update()}).catch(()=>{})}
 }
 </script></body></html>
