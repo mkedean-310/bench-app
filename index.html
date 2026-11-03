@@ -18,7 +18,7 @@ table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px s
 .stp button{width:56px;height:56px;flex:0 0 56px;font-size:28px;border:0;border-radius:12px;background:#333;color:#eee}
 .stp input{flex:1;min-width:64px;height:56px;font-size:28px;font-weight:700;text-align:center;padding:4px}
 .plan{font-size:13px;color:#4ade80}
-</style></head><body><header>DB Bench Progress</header><main id="app"></main>
+</style></head><body><header>DB Progress</header><div class="row seg" id="exs" style="padding:8px 12px 0;margin:0"><button data-ex="bench">Bench</button><button data-ex="shoulder">Shoulder Press</button></div><main id="app"></main>
 <nav><button data-v="next" class="on">Next</button><button data-v="log">Log</button><button data-v="hist">History</button><button data-v="chart">Chart</button><button data-v="method">Method</button></nav>
 <script>
 // ---------- Pure logic (testable) ----------
@@ -58,23 +58,51 @@ function recommend(all){
   return{type,why,sets:[{w:W-15,r:12,rir:3},{w:W-5,r:10,rir:2},{w:W,r:R,rir:2},{w:W-5,r:10,rir:2},{w:W-15,r:12,rir:1}]};
 }
 // Preview upcoming day types by simulating sessions done as prescribed
-function upcoming(all,k=4){let S=[...all].filter(s=>s.sets.length);const out=[];let d=S.length?sortS(S).slice(-1)[0].date:'2000-01-01';
-  for(let i=0;i<k;i++){const r=recommend(S);out.push(r.type);d=d+'~';S=S.concat([{id:'sim'+i,date:d,type:r.type,sets:r.sets.map(x=>({w:x.w,r:x.r}))}])}return out}
-if(typeof module!=='undefined')module.exports={SEED,recommend,upcoming,epley,best};
+// ---------- Shoulder press (joint-friendly) ----------
+const SH={H:[8,10],M:[12,15]};
+function recommendS(all){
+  const S=sortS(all).filter(s=>s.sets.length);
+  const mk=(t,W)=>t==='H'?[{w:30,r:10,rir:5,wu:1},{w:40,r:6,rir:4,wu:1},{w:W,r:8,rir:2},{w:W-5,r:10,rir:3}]:[{w:30,r:12,rir:5,wu:1},{w:Math.min(40,W-5),r:8,rir:4,wu:1},{w:W,r:12,rir:3},{w:W-5,r:12,rir:3}];
+  if(!S.length)return{type:'H',why:'First session: conservative start at 50 lb (well under your 65×5 best) so your shoulders adapt. Top set 8 reps with 2 left in the tank — never to failure.',sets:mk('H',50)};
+  const last=S[S.length-1];const E=S.map(s=>best(s).e);const n=S.length;
+  const lastDeload=S.map(s=>s.type).lastIndexOf('D');
+  const win=S.slice(Math.max(lastDeload+1,n-10));const peak=Math.max(...win.map(s=>best(s).e));const recent=E.slice(-2);
+  const work=s=>s.sets.reduce((m,x)=>x.w>m.w||(x.w===m.w&&x.r>m.r)?x:m,{w:0,r:0});
+  if(last.type!=='D'&&n>=3&&recent.every(e=>e<0.95*peak)&&lastDeload<n-2){const t=r5(0.85*work(S.filter(s=>s.type!=='D').slice(-1)[0]).w);
+    return{type:'D',why:`Deload: last 2 sessions (${recent.map(e=>e.toFixed(0)).join(', ')} lb e1RM) are >5% below your recent peak (${peak.toFixed(0)}). Easy day, RIR 4.`,sets:[{w:30,r:10,rir:5,wu:1},{w:t,r:8,rir:4},{w:t,r:8,rir:4}]}}
+  const type=(last.type==='H')?'M':'H';const [lo,hi]=SH[type];
+  const same=[...S].reverse().filter(s=>s.type===type);
+  if(!same.length){const h=[...S].reverse().find(s=>s.type==='H');let W=h?work(h).w-5:45;if((last.pain||0)>=3)W-=5;W=Math.max(30,W);
+    return{type,why:`First ${type==='H'?'Heavy':'Medium'} day: ${W} lb for ${lo}–${hi} reps, 2–3 reps in reserve.${(last.pain||0)>=3?' Reduced 5 lb because you reported pain last time.':''}`,sets:mk(type,W)}}
+  const t1=work(same[0]),t2=same[1]?work(same[1]):null;let W=t1.w,why;
+  if((last.pain||0)>=3){W-=5;why=`You logged pain ${last.pain}/10 last session → drop 5 lb. If pain persists, stop and check with your doctor/PT.`}
+  else if(t1.r<lo){W-=5;why=`Last ${TNS[type]} top set ${t1.w}×${t1.r} was under ${lo} reps → drop 5 lb.`}
+  else if(t1.r>=hi&&t2&&t2.w===t1.w&&t2.r>=hi&&!(same[1].pain>=3)&&!(same[0].pain>=3)){W+=5;why=`Hit ${hi}+ reps at ${t1.w} lb two ${TNS[type]} sessions in a row → add 5 lb.`}
+  else why=`Hold ${W} lb and aim for ${Math.min(hi,Math.max(lo,t1.r+1))} reps. You go up 5 lb after hitting ${hi} reps in two ${TNS[type]} sessions in a row.`;
+  W=Math.max(30,W);const st=mk(type,W);st[2].r=W===t1.w?Math.min(hi,Math.max(lo,t1.r+1)):lo;
+  return{type,why:why+' Never grind to failure.',sets:st};
+}
+const TNS={H:'Heavy',M:'Medium',D:'Deload'};
+function upcoming(all,k=4,rf=recommend){let S=[...all].filter(s=>s.sets.length);const out=[];let d=S.length?sortS(S).slice(-1)[0].date:'2000-01-01';
+  for(let i=0;i<k;i++){const r=rf(S);out.push(r.type);d=d+'~';S=S.concat([{id:'sim'+i,date:d,type:r.type,sets:r.sets.map(x=>({w:x.w,r:x.r}))}])}return out}
+if(typeof module!=='undefined')module.exports={SEED,recommend,recommendS,upcoming,epley,best};
 // ---------- UI ----------
 if(typeof document!=='undefined'){
-const K='benchSessions';let db;try{db=JSON.parse(localStorage.getItem(K))}catch(e){}if(!db){db=SEED;save()}
-function save(){localStorage.setItem(K,JSON.stringify(db))}
+let EX=localStorage.getItem('exercise')||'bench';
+const KEYS={bench:'benchSessions',shoulder:'shoulderSessions'},NAME={bench:'DB Bench Press',shoulder:'DB Shoulder Press'};
+let K,db;function load(){K=KEYS[EX];db=null;try{db=JSON.parse(localStorage.getItem(K))}catch(e){}if(!db){db=EX==='bench'?SEED:[];save()}}
+function save(){localStorage.setItem(K,JSON.stringify(db))}load();
+const REC=a=>EX==='bench'?recommend(a):recommendS(a);
 const $=s=>document.querySelector(s),app=$('#app');const TN={H:'Heavy',M:'Medium',R:'Other (R)',D:'Deload','':'Unlabeled'};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let draft=null;
 const V={
- next(){const r=recommend(db);const up=upcoming(db,4);app.innerHTML=`<div class="card"><div class="muted">Coming up</div><div style="font-size:18px"><b>Next: ${TN[up[0]]}</b> → then ${up.slice(1).map(t=>TN[t]).join(' → ')}</div>${r.type==='D'?'<div class="muted">Deload because your last 2 sessions were >5% below your best.</div>':''}<div class="muted" style="font-size:12px">Preview assumes you hit today's targets; it updates after each log.</div></div><div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
- <table>${r.sets.map((s,i)=>`<tr><td>Set ${i+1}</td><td class="big" style="font-size:20px">${s.w} × ${s.r}</td><td class="muted">RIR ${s.rir}</td></tr>`).join('')}</table>
- <button class="b" id="use">Log this session</button></div><div class="card muted">Weights are per dumbbell (lb). RIR = reps in reserve. If a set feels much harder than target RIR, stop there.</div>`;
+ next(){const r=REC(db);const up=upcoming(db,4,REC);app.innerHTML=`<div class="card"><div class="muted">Coming up</div><div style="font-size:18px"><b>Next: ${TN[up[0]]}</b> → then ${up.slice(1).map(t=>TN[t]).join(' → ')}</div>${r.type==='D'?'<div class="muted">Deload because your last 2 sessions were >5% below your best.</div>':''}<div class="muted" style="font-size:12px">Preview assumes you hit today's targets; it updates after each log.</div></div><div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
+ <table>${r.sets.map((s,i)=>`<tr><td>Set ${i+1}</td><td class="big" style="font-size:20px">${s.w} × ${s.r}</td><td class="muted">${s.wu?'warm-up':'RIR '+s.rir}</td></tr>`).join('')}</table>
+ <button class="b" id="use">Log this session</button></div><div class="card muted">Weights are per dumbbell (lb). RIR = reps in reserve. If a set feels much harder than target RIR, stop there.${EX==='shoulder'?' <b>Shoulders: stop the set on any sharp pain.</b>':''}</div>`;
  $('#use').onclick=()=>{draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(s=>({w:s.w,r:s.r})),plan:true};go('log')}},
- log(){if(!draft){const r=recommend(db);draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(x=>({w:x.w,r:x.r})),plan:true}}
- const rec=recommend(db);
+ log(){if(!draft){const r=REC(db);draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(x=>({w:x.w,r:x.r})),plan:true}}
+ const rec=REC(db);
  const stp=(i,k,v,d,lab)=>`<div class="fld"><div class="lb">${lab}</div><div class="stp"><button data-i="${i}" data-f="${k}" data-d="-${d}" aria-label="minus">−</button><input type="number" inputmode="numeric" pattern="[0-9]*" data-i="${i}" data-k="${k}" value="${v}"><button data-i="${i}" data-f="${k}" data-d="${d}" aria-label="plus">+</button></div></div>`;
  app.innerHTML=`<div class="card"><label>Date<input type="date" id="dt" value="${draft.date}"></label>
  <div class="lb muted" style="margin-top:10px">Day type <span class="plan">(recommended: ${TN[rec.type]})</span></div>
@@ -82,16 +110,18 @@ const V={
  ${draft.plan?'<div class="plan">Sets are prefilled with your plan. Adjust to what you actually did, then Save.</div>':''}
  <div id="sets">${draft.sets.map((s,i)=>`<div class="set"><h4>Set ${i+1}</h4>${stp(i,'w',s.w,5,'Weight (lb per dumbbell)')}${stp(i,'r',s.r,1,'Reps')}</div>`).join('')}</div>
  <div class="row"><button class="b g" id="add" style="flex:1">+ Set</button><button class="b g" id="rm" style="flex:1">− Set</button></div>
+ ${EX==='shoulder'?`<div class="fld"><div class="lb">Shoulder pain during/after (0 = none, 10 = worst) <span class="plan">${(draft.pain||0)>=3?'⚠ 3+ → next session holds/reduces weight':''}</span></div><div class="stp"><button data-pd="-1">−</button><input type="number" id="pn" inputmode="numeric" value="${draft.pain||0}"><button data-pd="1">+</button></div></div>`:''}
  <label>Notes<textarea id="nt" rows="2">${esc(draft.notes)}</textarea></label><button class="b" id="sv" style="width:100%">Save session</button></div>`;
- const sync=()=>{draft.date=$('#dt').value;draft.notes=$('#nt').value;app.querySelectorAll('input[data-k]').forEach(x=>draft.sets[x.dataset.i][x.dataset.k]=Number(x.value)||0)};
+ const sync=()=>{if($('#pn'))draft.pain=Math.min(10,Math.max(0,Number($('#pn').value)||0));draft.date=$('#dt').value;draft.notes=$('#nt').value;app.querySelectorAll('input[data-k]').forEach(x=>draft.sets[x.dataset.i][x.dataset.k]=Number(x.value)||0)};
  app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{sync();draft.type=b.dataset.t;if(draft.plan&&draft.type===rec.type)draft.sets=rec.sets.map(x=>({w:x.w,r:x.r}));V.log()});
  app.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{sync();const s=draft.sets[b.dataset.i];s[b.dataset.f]=Math.max(0,s[b.dataset.f]+Number(b.dataset.d));V.log()});
+ app.querySelectorAll('[data-pd]').forEach(b=>b.onclick=()=>{sync();draft.pain=Math.min(10,Math.max(0,(draft.pain||0)+Number(b.dataset.pd)));V.log()});
  $('#add').onclick=()=>{sync();const l=draft.sets[draft.sets.length-1]||{w:75,r:10};draft.sets.push({...l});V.log()};
  $('#rm').onclick=()=>{sync();draft.sets.pop();V.log()};
  $('#sv').onclick=()=>{sync();const s={...draft,plan:undefined,id:draft.id||Date.now().toString(),sets:draft.sets.filter(x=>x.w&&x.r)};db=db.filter(x=>x.id!==s.id);db.push(s);save();draft=null;go('hist')}},
  hist(){app.innerHTML=`<div class="card"><button class="b" id="ex">Export backup</button><button class="b g" id="im">Import backup</button><input type="file" id="f" accept=".json" hidden></div>`+
- sortS(db).reverse().map(s=>{const b=best(s);return`<div class="card"><b>${s.date}</b><span class="tag">${TN[s.type]}</span><span class="tag">e1RM ${b.e.toFixed(0)}</span><div>${s.sets.map(x=>x.w+'×'+x.r).join(', ')}</div>${s.notes?`<div class="muted">${esc(s.notes)}</div>`:''}<button class="b g" data-e="${s.id}">Edit</button><button class="b g" data-x="${s.id}">Delete</button></div>`}).join('');
- $('#ex').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,1)],{type:'application/json'}));a.download='bench-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click()};
+ sortS(db).reverse().map(s=>{const b=best(s);return`<div class="card"><b>${s.date}</b><span class="tag">${TN[s.type]}</span><span class="tag">e1RM ${b.e.toFixed(0)}</span>${s.pain?`<span class="tag">pain ${s.pain}/10</span>`:''}<div>${s.sets.map(x=>x.w+'×'+x.r).join(', ')}</div>${s.notes?`<div class="muted">${esc(s.notes)}</div>`:''}<button class="b g" data-e="${s.id}">Edit</button><button class="b g" data-x="${s.id}">Delete</button></div>`}).join('');
+ $('#ex').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,1)],{type:'application/json'}));a.download=EX+'-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click()};
  $('#im').onclick=()=>$('#f').click();$('#f').onchange=e=>{const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d))throw 0;if(confirm('Replace all data with '+d.length+' sessions?')){db=d;save();V.hist()}}catch(x){alert('Not a valid backup file')}};r.readAsText(e.target.files[0])};
  app.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{draft=JSON.parse(JSON.stringify(db.find(x=>x.id===b.dataset.e)));go('log')});
  app.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{if(confirm('Delete this session?')){db=db.filter(x=>x.id!==b.dataset.x);save();V.hist()}})},
@@ -102,7 +132,20 @@ const V={
  app.innerHTML=`<div class="card"><div class="muted">Best-set e1RM per session (Epley), lb per DB</div><svg viewBox="0 0 ${W} ${H}" width="100%">${g}<polyline fill="none" stroke="#4ade80" stroke-width="2" points="${S.map((s,i)=>X(t[i])+','+Y(e[i])).join(' ')}"/>${S.map((s,i)=>`<circle cx="${X(t[i])}" cy="${Y(e[i])}" r="4" fill="${col[s.type||'']}"/>`).join('')}<text x="${P}" y="${H-8}" fill="#888" font-size="10">${S[0].date}</text><text x="${W-70}" y="${H-8}" fill="#888" font-size="10">${S[S.length-1].date}</text></svg>
  <div class="muted"><span style="color:#4ade80">●</span> Heavy <span style="color:#60a5fa">●</span> Medium <span style="color:#fbbf24">●</span> R <span style="color:#c084fc">●</span> Deload <span style="color:#aaa">●</span> unlabeled</div></div>
  <div class="card">Peak: <b>${Math.max(...e).toFixed(1)} lb</b> · Latest: <b>${e[e.length-1].toFixed(1)} lb</b></div>`},
- method(){app.innerHTML=`<div class="card"><h3>The rules</h3><ol>
+ method(){if(EX==='shoulder'){app.innerHTML=`<div class="card"><h3>Shoulder press rules</h3><ol>
+ <li><b>Alternate:</b> Heavy (top set 8–10 reps, 2 RIR) and Medium (12–15 reps, 2–3 RIR). Never to failure.</li>
+ <li><b>Warm up</b> with 30 lb then 40 lb before working sets.</li>
+ <li><b>Progress slowly:</b> +5 lb only after hitting the top of the range at the stated RIR in two same-type sessions in a row.</li>
+ <li><b>Back off:</b> pain 3+/10 or missed reps → drop 5 lb next time.</li>
+ <li><b>Deload:</b> same rule as bench (last 2 sessions >5% below recent peak).</li></ol></div>
+ <div class="card"><h3>Joint-friendly form</h3><ul>
+ <li>Neutral or semi-neutral grip (palms facing in or angled ~45°).</li>
+ <li>Elbows slightly forward of your body (scapular plane), not flared straight out.</li>
+ <li>Seated on an incline bench at ~75–80° rather than fully upright.</li>
+ <li>Controlled tempo: ~2–3 s down, no bouncing; stop just short of lockout if it pinches.</li>
+ <li>Stop immediately on sharp or pinching pain. Mild achiness ≤2/10 that settles by next day is usually OK.</li></ul>
+ <p class="muted">Training aid, not medical advice. With shoulder arthritis, check with your doctor or a physical therapist before progressing.</p></div>`;return}
+ app.innerHTML=`<div class="card"><h3>The rules</h3><ol>
  <li><b>Undulate:</b> alternate Heavy (top set 6–8 reps) and Medium (10–12 reps) days, ~2×/week.</li>
  <li><b>Autoregulate with RIR:</b> top set ~1 rep in reserve, ramp sets 2–3 RIR. Don't grind to failure every session.</li>
  <li><b>Double progression:</b> same weight until you hit the top of the rep range, then +5 lb/DB and restart at the bottom. Under the range → drop 5 lb.</li>
@@ -114,8 +157,9 @@ const V={
  <li><a href="https://rpstrength.com/blogs/articles/progressing-for-hypertrophy">Renaissance Periodization (Mike Israetel) – progressing for hypertrophy</a></li>
  <li><a href="https://www.biolayne.com/">Layne Norton (PH3 / PHAT power-hypertrophy undulation)</a></li></ul>
  <p class="muted">This is a training aid, not medical advice. Data stays on this phone; use Export backup regularly.</p></div>`}};
-function go(v){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));V[v]();scrollTo(0,0)}
+let CUR='next';function go(v){CUR=v;document.querySelectorAll('[data-ex]').forEach(b=>b.classList.toggle('on',b.dataset.ex===EX));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));V[v]();scrollTo(0,0)}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));go('next');
+document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>{EX=b.dataset.ex;localStorage.setItem('exercise',EX);load();draft=null;go(CUR)});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
 }
 </script></body></html>
