@@ -12,6 +12,12 @@ button.g{background:#333;color:#eee}input,select,textarea{background:#2a2a2a;col
 .seg button{flex:1;padding:14px;border-radius:10px;border:1px solid #444;background:#2a2a2a;color:#eee;font-size:17px}.seg button.on{background:#4ade80;color:#111;font-weight:700}
 table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px solid #333}.big{font-size:24px;font-weight:700;color:#4ade80}
 .muted{color:#999;font-size:14px}a{color:#4ade80}.tag{display:inline-block;padding:2px 8px;border-radius:8px;background:#333;font-size:13px;margin-left:6px}
+.seg{flex-wrap:wrap}.seg button{flex:1 1 30%;font-size:16px;padding:12px 6px}
+.set{background:#262626;border-radius:12px;padding:10px;margin:10px 0}.set h4{margin:0 0 6px;font-size:15px;color:#aaa}
+.fld{margin:6px 0}.fld .lb{font-size:14px;color:#bbb;margin-bottom:4px}.stp{display:flex;gap:8px;align-items:center}
+.stp button{width:56px;height:56px;flex:0 0 56px;font-size:28px;border:0;border-radius:12px;background:#333;color:#eee}
+.stp input{flex:1;min-width:64px;height:56px;font-size:28px;font-weight:700;text-align:center;padding:4px}
+.plan{font-size:13px;color:#4ade80}
 </style></head><body><header>DB Bench Progress</header><main id="app"></main>
 <nav><button data-v="next" class="on">Next</button><button data-v="log">Log</button><button data-v="hist">History</button><button data-v="chart">Chart</button><button data-v="method">Method</button></nav>
 <script>
@@ -59,26 +65,30 @@ if(typeof module!=='undefined')module.exports={SEED,recommend,upcoming,epley,bes
 if(typeof document!=='undefined'){
 const K='benchSessions';let db;try{db=JSON.parse(localStorage.getItem(K))}catch(e){}if(!db){db=SEED;save()}
 function save(){localStorage.setItem(K,JSON.stringify(db))}
-const $=s=>document.querySelector(s),app=$('#app');const TN={H:'Heavy',M:'Medium',R:'R',D:'Deload','':'—'};
+const $=s=>document.querySelector(s),app=$('#app');const TN={H:'Heavy',M:'Medium',R:'Other (R)',D:'Deload','':'Unlabeled'};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let draft=null;
 const V={
  next(){const r=recommend(db);const up=upcoming(db,4);app.innerHTML=`<div class="card"><div class="muted">Coming up</div><div style="font-size:18px"><b>Next: ${TN[up[0]]}</b> → then ${up.slice(1).map(t=>TN[t]).join(' → ')}</div>${r.type==='D'?'<div class="muted">Deload because your last 2 sessions were >5% below your best.</div>':''}<div class="muted" style="font-size:12px">Preview assumes you hit today's targets; it updates after each log.</div></div><div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
  <table>${r.sets.map((s,i)=>`<tr><td>Set ${i+1}</td><td class="big" style="font-size:20px">${s.w} × ${s.r}</td><td class="muted">RIR ${s.rir}</td></tr>`).join('')}</table>
  <button class="b" id="use">Log this session</button></div><div class="card muted">Weights are per dumbbell (lb). RIR = reps in reserve. If a set feels much harder than target RIR, stop there.</div>`;
- $('#use').onclick=()=>{draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(s=>({w:s.w,r:s.r}))};go('log')}},
- log(){if(!draft)draft={date:new Date().toISOString().slice(0,10),type:'H',notes:'',sets:[{w:75,r:10},{w:85,r:8},{w:95,r:6},{w:90,r:8},{w:80,r:10}]};
+ $('#use').onclick=()=>{draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(s=>({w:s.w,r:s.r})),plan:true};go('log')}},
+ log(){if(!draft){const r=recommend(db);draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(x=>({w:x.w,r:x.r})),plan:true}}
+ const rec=recommend(db);
+ const stp=(i,k,v,d,lab)=>`<div class="fld"><div class="lb">${lab}</div><div class="stp"><button data-i="${i}" data-f="${k}" data-d="-${d}" aria-label="minus">−</button><input type="number" inputmode="numeric" pattern="[0-9]*" data-i="${i}" data-k="${k}" value="${v}"><button data-i="${i}" data-f="${k}" data-d="${d}" aria-label="plus">+</button></div></div>`;
  app.innerHTML=`<div class="card"><label>Date<input type="date" id="dt" value="${draft.date}"></label>
- <div class="row seg">${['H','M','R','D',''].map(t=>`<button data-t="${t}" class="${draft.type===t?'on':''}">${t||'—'}</button>`).join('')}</div>
- <div id="sets">${draft.sets.map((s,i)=>`<div class="row"><span style="width:28px">${i+1}</span><button class="b g" data-i="${i}" data-f="w" data-d="-5">−</button><input inputmode="numeric" data-i="${i}" data-k="w" value="${s.w}"><button class="b g" data-i="${i}" data-f="w" data-d="5">+</button><span>×</span><button class="b g" data-i="${i}" data-f="r" data-d="-1">−</button><input inputmode="numeric" data-i="${i}" data-k="r" value="${s.r}"><button class="b g" data-i="${i}" data-f="r" data-d="1">+</button></div>`).join('')}</div>
- <button class="b g" id="add">+ Set</button><button class="b g" id="rm">− Set</button>
- <label>Notes<textarea id="nt" rows="2">${esc(draft.notes)}</textarea></label><button class="b" id="sv">Save session</button></div>`;
+ <div class="lb muted" style="margin-top:10px">Day type <span class="plan">(recommended: ${TN[rec.type]})</span></div>
+ <div class="row seg">${['H','M','D','R',''].map(t=>`<button data-t="${t}" class="${draft.type===t?'on':''}">${TN[t]}</button>`).join('')}</div>
+ ${draft.plan?'<div class="plan">Sets are prefilled with your plan. Adjust to what you actually did, then Save.</div>':''}
+ <div id="sets">${draft.sets.map((s,i)=>`<div class="set"><h4>Set ${i+1}</h4>${stp(i,'w',s.w,5,'Weight (lb per dumbbell)')}${stp(i,'r',s.r,1,'Reps')}</div>`).join('')}</div>
+ <div class="row"><button class="b g" id="add" style="flex:1">+ Set</button><button class="b g" id="rm" style="flex:1">− Set</button></div>
+ <label>Notes<textarea id="nt" rows="2">${esc(draft.notes)}</textarea></label><button class="b" id="sv" style="width:100%">Save session</button></div>`;
  const sync=()=>{draft.date=$('#dt').value;draft.notes=$('#nt').value;app.querySelectorAll('input[data-k]').forEach(x=>draft.sets[x.dataset.i][x.dataset.k]=Number(x.value)||0)};
- app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{sync();draft.type=b.dataset.t;V.log()});
+ app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{sync();draft.type=b.dataset.t;if(draft.plan&&draft.type===rec.type)draft.sets=rec.sets.map(x=>({w:x.w,r:x.r}));V.log()});
  app.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{sync();const s=draft.sets[b.dataset.i];s[b.dataset.f]=Math.max(0,s[b.dataset.f]+Number(b.dataset.d));V.log()});
  $('#add').onclick=()=>{sync();const l=draft.sets[draft.sets.length-1]||{w:75,r:10};draft.sets.push({...l});V.log()};
  $('#rm').onclick=()=>{sync();draft.sets.pop();V.log()};
- $('#sv').onclick=()=>{sync();const s={...draft,id:draft.id||Date.now().toString(),sets:draft.sets.filter(x=>x.w&&x.r)};db=db.filter(x=>x.id!==s.id);db.push(s);save();draft=null;go('hist')}},
+ $('#sv').onclick=()=>{sync();const s={...draft,plan:undefined,id:draft.id||Date.now().toString(),sets:draft.sets.filter(x=>x.w&&x.r)};db=db.filter(x=>x.id!==s.id);db.push(s);save();draft=null;go('hist')}},
  hist(){app.innerHTML=`<div class="card"><button class="b" id="ex">Export backup</button><button class="b g" id="im">Import backup</button><input type="file" id="f" accept=".json" hidden></div>`+
  sortS(db).reverse().map(s=>{const b=best(s);return`<div class="card"><b>${s.date}</b><span class="tag">${TN[s.type]}</span><span class="tag">e1RM ${b.e.toFixed(0)}</span><div>${s.sets.map(x=>x.w+'×'+x.r).join(', ')}</div>${s.notes?`<div class="muted">${esc(s.notes)}</div>`:''}<button class="b g" data-e="${s.id}">Edit</button><button class="b g" data-x="${s.id}">Delete</button></div>`}).join('');
  $('#ex').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,1)],{type:'application/json'}));a.download='bench-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click()};
