@@ -18,7 +18,8 @@ table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px s
 .stp button{width:56px;height:56px;flex:0 0 56px;font-size:28px;border:0;border-radius:12px;background:#333;color:#eee}
 .stp input{flex:1;min-width:64px;height:56px;font-size:28px;font-weight:700;text-align:center;padding:4px}
 .plan{font-size:13px;color:#4ade80}
-</style></head><body><header>DB Progress</header><div class="row seg" id="exs" style="padding:8px 12px 0;margin:0"><button data-ex="bench">Bench</button><button data-ex="shoulder">Shoulder Press</button></div><main id="app"></main>
+#exs{display:grid;grid-template-columns:1fr 1fr;gap:8px}#exs button{padding:12px 4px;font-size:16px;white-space:nowrap}
+</style></head><body><header>DB Progress</header><div class="row seg" id="exs" style="padding:8px 12px 0;margin:0"><button data-ex="bench">Bench</button><button data-ex="shoulder">Shoulder Press</button><button data-ex="lat">Lat Pulldown</button><button data-ex="leg">Leg Press</button></div><main id="app"></main>
 <nav><button data-v="next" class="on">Next</button><button data-v="log">Log</button><button data-v="hist">History</button><button data-v="chart">Chart</button><button data-v="method">Method</button></nav>
 <script>
 // ---------- Pure logic (testable) ----------
@@ -83,34 +84,62 @@ function recommendS(all){
   return{type,why:why+' Never grind to failure.',sets:st};
 }
 const TNS={H:'Heavy',M:'Medium',D:'Deload'};
+// ---------- Machine lifts (lat pulldown / leg press), joint-friendly ----------
+const MC={lat:{inc:5,def:80},leg:{inc:10,def:140}};
+function recommendX(all,c){const inc=c.inc,start=c.start,rd=x=>Math.max(inc,Math.round(x/inc)*inc);
+  const S=sortS(all).filter(s=>s.sets.length);
+  const mk=(t,W)=>t==='H'?[{w:rd(W*.5),r:10,rir:5,wu:1},{w:rd(W*.75),r:6,rir:4,wu:1},{w:W,r:8,rir:2},{w:Math.max(inc,W-inc),r:10,rir:3}]:[{w:rd(W*.5),r:12,rir:5,wu:1},{w:W,r:12,rir:3},{w:Math.max(inc,W-inc),r:12,rir:3}];
+  const HW=rd(start*1.1),MW=rd(start);
+  if(!S.length)return{type:'H',why:`First session: Heavy top set ${HW} lb (~10% over your ${start} lb easy-12 weight) for 8–10 reps with 2 left in the tank — never to failure.`,sets:mk('H',HW)};
+  const last=S[S.length-1];const E=S.map(s=>best(s).e);const n=S.length;
+  const lastDeload=S.map(s=>s.type).lastIndexOf('D');
+  const win=S.slice(Math.max(lastDeload+1,n-10));const peak=Math.max(...win.map(s=>best(s).e));const recent=E.slice(-2);
+  const work=s=>s.sets.reduce((m,x)=>x.w>m.w||(x.w===m.w&&x.r>m.r)?x:m,{w:0,r:0});
+  if(last.type!=='D'&&n>=3&&recent.every(e=>e<0.95*peak)&&lastDeload<n-2){const t=rd(0.85*work(S.filter(s=>s.type!=='D').slice(-1)[0]).w);
+    return{type:'D',why:`Deload: last 2 sessions (${recent.map(e=>e.toFixed(0)).join(', ')} lb e1RM) are >5% below your recent peak (${peak.toFixed(0)}). Easy day, RIR 4.`,sets:[{w:rd(t*.6),r:10,rir:5,wu:1},{w:t,r:8,rir:4},{w:t,r:8,rir:4}]}}
+  const type=(last.type==='H')?'M':'H';const [lo,hi]=SH[type];
+  const same=[...S].reverse().filter(s=>s.type===type);
+  if(!same.length){let W=type==='H'?HW:MW;if((last.pain||0)>=3)W=Math.max(inc,W-inc);
+    return{type,why:`First ${TNS[type]} day: ${W} lb for ${lo}–${hi} reps, 2–3 reps in reserve.${(last.pain||0)>=3?` Reduced ${inc} lb because you reported pain last time.`:''}`,sets:mk(type,W)}}
+  const t1=work(same[0]),t2=same[1]?work(same[1]):null;let W=t1.w,why;
+  if((last.pain||0)>=3){W-=inc;why=`You logged pain ${last.pain}/10 last session → drop ${inc} lb. If pain persists, stop and check with your doctor/PT.`}
+  else if(t1.r<lo){W-=inc;why=`Last ${TNS[type]} top set ${t1.w}×${t1.r} was under ${lo} reps → drop ${inc} lb.`}
+  else if(t1.r>=hi&&t2&&t2.w===t1.w&&t2.r>=hi&&!(same[1].pain>=3)&&!(same[0].pain>=3)){W+=inc;why=`Hit ${hi}+ reps at ${t1.w} lb two ${TNS[type]} sessions in a row → add ${inc} lb.`}
+  else why=`Hold ${W} lb and aim for ${Math.min(hi,Math.max(lo,t1.r+1))} reps. You go up ${inc} lb after hitting ${hi} reps in two ${TNS[type]} sessions in a row.`;
+  W=Math.max(inc,W);const st=mk(type,W);const ti=type==='H'?2:1;st[ti].r=W===t1.w?Math.min(hi,Math.max(lo,t1.r+1)):lo;
+  return{type,why:why+' Never grind to failure.',sets:st};
+}
 function upcoming(all,k=4,rf=recommend){let S=[...all].filter(s=>s.sets.length);const out=[];let d=S.length?sortS(S).slice(-1)[0].date:'2000-01-01';
   for(let i=0;i<k;i++){const r=rf(S);out.push(r.type);d=d+'~';S=S.concat([{id:'sim'+i,date:d,type:r.type,sets:r.sets.map(x=>({w:x.w,r:x.r}))}])}return out}
-if(typeof module!=='undefined')module.exports={SEED,recommend,recommendS,upcoming,epley,best};
+if(typeof module!=='undefined')module.exports={SEED,recommend,recommendS,recommendX,MC,upcoming,epley,best};
 // ---------- UI ----------
 if(typeof document!=='undefined'){
 let EX=localStorage.getItem('exercise')||'bench';
-const KEYS={bench:'benchSessions',shoulder:'shoulderSessions'},NAME={bench:'DB Bench Press',shoulder:'DB Shoulder Press'};
+const KEYS={bench:'benchSessions',shoulder:'shoulderSessions',lat:'latSessions',leg:'legSessions'},NAME={bench:'DB Bench Press',shoulder:'DB Shoulder Press',lat:'Lat Pulldown',leg:'Leg Press'};
+const MX=()=>EX==='lat'||EX==='leg';const getStart=()=>Number(localStorage.getItem(EX+'Start'))||0;const cfg=()=>({inc:MC[EX].inc,start:getStart()||MC[EX].def});
 let K,db;function load(){K=KEYS[EX];db=null;try{db=JSON.parse(localStorage.getItem(K))}catch(e){}if(!db){db=EX==='bench'?SEED:[];save()}}
 function save(){localStorage.setItem(K,JSON.stringify(db))}load();
-const REC=a=>EX==='bench'?recommend(a):recommendS(a);
+const REC=a=>EX==='bench'?recommend(a):EX==='shoulder'?recommendS(a):recommendX(a,cfg());
+function startPrompt(){const c=MC[EX];app.innerHTML=`<div class="card"><div class="big">${NAME[EX]}</div><h3>Set your starting weight</h3><p>What weight can you do for about <b>12 easy reps</b> (could do 3+ more)? Guess low if unsure — the app adjusts.</p><div class="stp"><button id="sm">−</button><input type="number" id="sw" inputmode="numeric" value="${getStart()||c.def}"><button id="sp">+</button></div><div class="muted">lb on the machine. Heavy days start ~10% above this, Medium days at this weight.</div><button class="b" id="ss" style="width:100%;margin-top:12px">Save starting weight</button></div>`;
+ const v=()=>Number($('#sw').value)||c.def;$('#sm').onclick=()=>$('#sw').value=Math.max(c.inc,v()-c.inc);$('#sp').onclick=()=>$('#sw').value=v()+c.inc;$('#ss').onclick=()=>{localStorage.setItem(EX+'Start',v());go(CUR==='method'?'method':'next')}}
 const $=s=>document.querySelector(s),app=$('#app');const TN={H:'Heavy',M:'Medium',R:'Other (R)',D:'Deload','':'Unlabeled'};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let draft=null;
 const V={
- next(){const r=REC(db);const up=upcoming(db,4,REC);app.innerHTML=`<div class="card"><div class="muted">Coming up</div><div style="font-size:18px"><b>Next: ${TN[up[0]]}</b> → then ${up.slice(1).map(t=>TN[t]).join(' → ')}</div>${r.type==='D'?'<div class="muted">Deload because your last 2 sessions were >5% below your best.</div>':''}<div class="muted" style="font-size:12px">Preview assumes you hit today's targets; it updates after each log.</div></div><div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
+ next(){if(MX()&&!getStart()&&!db.length)return startPrompt();const r=REC(db);const up=upcoming(db,4,REC);app.innerHTML=`<div class="card"><div class="muted">Coming up</div><div style="font-size:18px"><b>Next: ${TN[up[0]]}</b> → then ${up.slice(1).map(t=>TN[t]).join(' → ')}</div>${r.type==='D'?'<div class="muted">Deload because your last 2 sessions were >5% below your best.</div>':''}<div class="muted" style="font-size:12px">Preview assumes you hit today's targets; it updates after each log.</div></div><div class="card"><div class="muted">Next session</div><div class="big">${TN[r.type]} day</div><p>${esc(r.why)}</p>
  <table>${r.sets.map((s,i)=>`<tr><td>Set ${i+1}</td><td class="big" style="font-size:20px">${s.w} × ${s.r}</td><td class="muted">${s.wu?'warm-up':'RIR '+s.rir}</td></tr>`).join('')}</table>
- <button class="b" id="use">Log this session</button></div><div class="card muted">Weights are per dumbbell (lb). RIR = reps in reserve. If a set feels much harder than target RIR, stop there.${EX==='shoulder'?' <b>Shoulders: stop the set on any sharp pain.</b>':''}</div>`;
+ <button class="b" id="use">Log this session</button></div><div class="card muted">${MX()?'Weights are the machine setting (lb).':'Weights are per dumbbell (lb).'} RIR = reps in reserve. If a set feels much harder than target RIR, stop there.${EX!=='bench'?' <b>Stop the set on any sharp pain.</b>':''}</div>`;
  $('#use').onclick=()=>{draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(s=>({w:s.w,r:s.r})),plan:true};go('log')}},
- log(){if(!draft){const r=REC(db);draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(x=>({w:x.w,r:x.r})),plan:true}}
+ log(){if(MX()&&!getStart()&&!db.length)return startPrompt();if(!draft){const r=REC(db);draft={date:new Date().toISOString().slice(0,10),type:r.type,notes:'',sets:r.sets.map(x=>({w:x.w,r:x.r})),plan:true}}
  const rec=REC(db);
  const stp=(i,k,v,d,lab)=>`<div class="fld"><div class="lb">${lab}</div><div class="stp"><button data-i="${i}" data-f="${k}" data-d="-${d}" aria-label="minus">−</button><input type="number" inputmode="numeric" pattern="[0-9]*" data-i="${i}" data-k="${k}" value="${v}"><button data-i="${i}" data-f="${k}" data-d="${d}" aria-label="plus">+</button></div></div>`;
  app.innerHTML=`<div class="card"><label>Date<input type="date" id="dt" value="${draft.date}"></label>
  <div class="lb muted" style="margin-top:10px">Day type <span class="plan">(recommended: ${TN[rec.type]})</span></div>
  <div class="row seg">${['H','M','D','R',''].map(t=>`<button data-t="${t}" class="${draft.type===t?'on':''}">${TN[t]}</button>`).join('')}</div>
  ${draft.plan?'<div class="plan">Sets are prefilled with your plan. Adjust to what you actually did, then Save.</div>':''}
- <div id="sets">${draft.sets.map((s,i)=>`<div class="set"><h4>Set ${i+1}</h4>${stp(i,'w',s.w,5,'Weight (lb per dumbbell)')}${stp(i,'r',s.r,1,'Reps')}</div>`).join('')}</div>
+ <div id="sets">${draft.sets.map((s,i)=>`<div class="set"><h4>Set ${i+1}</h4>${stp(i,'w',s.w,MX()?MC[EX].inc:5,MX()?'Weight (lb, machine)':'Weight (lb per dumbbell)')}${stp(i,'r',s.r,1,'Reps')}</div>`).join('')}</div>
  <div class="row"><button class="b g" id="add" style="flex:1">+ Set</button><button class="b g" id="rm" style="flex:1">− Set</button></div>
- ${EX==='shoulder'?`<div class="fld"><div class="lb">Shoulder pain during/after (0 = none, 10 = worst) <span class="plan">${(draft.pain||0)>=3?'⚠ 3+ → next session holds/reduces weight':''}</span></div><div class="stp"><button data-pd="-1">−</button><input type="number" id="pn" inputmode="numeric" value="${draft.pain||0}"><button data-pd="1">+</button></div></div>`:''}
+ ${EX!=='bench'?`<div class="fld"><div class="lb">${EX==='leg'?'Knee/hip/back':'Shoulder'} pain during/after (0 = none, 10 = worst) <span class="plan">${(draft.pain||0)>=3?'⚠ 3+ → next session holds/reduces weight':''}</span></div><div class="stp"><button data-pd="-1">−</button><input type="number" id="pn" inputmode="numeric" value="${draft.pain||0}"><button data-pd="1">+</button></div></div>`:''}
  <label>Notes<textarea id="nt" rows="2">${esc(draft.notes)}</textarea></label><button class="b" id="sv" style="width:100%">Save session</button></div>`;
  const sync=()=>{if($('#pn'))draft.pain=Math.min(10,Math.max(0,Number($('#pn').value)||0));draft.date=$('#dt').value;draft.notes=$('#nt').value;app.querySelectorAll('input[data-k]').forEach(x=>draft.sets[x.dataset.i][x.dataset.k]=Number(x.value)||0)};
  app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{sync();draft.type=b.dataset.t;if(draft.plan&&draft.type===rec.type)draft.sets=rec.sets.map(x=>({w:x.w,r:x.r}));V.log()});
@@ -132,7 +161,15 @@ const V={
  app.innerHTML=`<div class="card"><div class="muted">Best-set e1RM per session (Epley), lb per DB</div><svg viewBox="0 0 ${W} ${H}" width="100%">${g}<polyline fill="none" stroke="#4ade80" stroke-width="2" points="${S.map((s,i)=>X(t[i])+','+Y(e[i])).join(' ')}"/>${S.map((s,i)=>`<circle cx="${X(t[i])}" cy="${Y(e[i])}" r="4" fill="${col[s.type||'']}"/>`).join('')}<text x="${P}" y="${H-8}" fill="#888" font-size="10">${S[0].date}</text><text x="${W-70}" y="${H-8}" fill="#888" font-size="10">${S[S.length-1].date}</text></svg>
  <div class="muted"><span style="color:#4ade80">●</span> Heavy <span style="color:#60a5fa">●</span> Medium <span style="color:#fbbf24">●</span> R <span style="color:#c084fc">●</span> Deload <span style="color:#aaa">●</span> unlabeled</div></div>
  <div class="card">Peak: <b>${Math.max(...e).toFixed(1)} lb</b> · Latest: <b>${e[e.length-1].toFixed(1)} lb</b></div>`},
- method(){if(EX==='shoulder'){app.innerHTML=`<div class="card"><h3>Shoulder press rules</h3><ol>
+ method(){if(MX()){const c=MC[EX],L=EX==='lat';app.innerHTML=`<div class="card"><h3>${NAME[EX]} rules</h3><ol>
+ <li><b>Alternate:</b> Heavy (top set 8–10 reps, 2 RIR) and Medium (12–15 reps, 2–3 RIR). Never to failure.</li>
+ <li><b>Progress slowly:</b> +${c.inc} lb only after hitting the top of the range in two same-type sessions in a row with no pain.</li>
+ <li><b>Back off:</b> pain 3+/10 or missed reps → drop ${c.inc} lb next time.</li>
+ <li><b>Deload:</b> same rule as bench (last 2 sessions >5% below recent peak).</li></ol>
+ <p>Starting weight (easy 12 reps): <b>${getStart()||c.def} lb</b> <button class="b g" id="chs">Change</button></p></div>
+ <div class="card"><h3>Safe form</h3><ul>${L?`<li>Pull the bar to your <b>upper chest</b>, never behind the neck.</li><li>Neutral or shoulder-width grip — not super wide.</li><li>Slight lean back, chest up, shoulders down away from ears.</li><li>Controlled: ~2 s up, no jerking or swinging.</li>`:`<li><b>Don't lock your knees</b> at the top — keep a slight bend.</li><li>Keep your lower back and hips flat on the pad the whole rep.</li><li>Moderate depth: stop before your lower back starts to round/lift.</li><li>Feet mid-platform, about shoulder-width; knees track over toes.</li><li>Controlled tempo, no bouncing at the bottom.</li>`}<li>Stop immediately on sharp or pinching pain.</li></ul>
+ <p class="muted">Training aid, not medical advice. With arthritis, check with your doctor or a physical therapist before progressing.</p></div>`;$('#chs').onclick=startPrompt;return}
+ if(EX==='shoulder'){app.innerHTML=`<div class="card"><h3>Shoulder press rules</h3><ol>
  <li><b>Alternate:</b> Heavy (top set 8–10 reps, 2 RIR) and Medium (12–15 reps, 2–3 RIR). Never to failure.</li>
  <li><b>Warm up</b> with 30 lb then 40 lb before working sets.</li>
  <li><b>Progress slowly:</b> +5 lb only after hitting the top of the range at the stated RIR in two same-type sessions in a row.</li>
